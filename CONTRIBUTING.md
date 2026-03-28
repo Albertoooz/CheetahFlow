@@ -4,6 +4,32 @@
 
 Follow the Quick start in [README.md](README.md).
 
+## Secret scanning (required before first commit)
+
+This repo uses **Gitleaks** via pre-commit hooks to prevent secrets from ever entering git history.
+
+Install the hooks once after cloning:
+
+```bash
+pip install pre-commit        # or: brew install pre-commit
+pre-commit install            # installs .git/hooks/pre-commit
+pre-commit install --hook-type pre-push   # optional: also scan on push
+```
+
+From that point on, every `git commit` automatically scans staged files. To run manually:
+
+```bash
+pre-commit run --all-files    # scan everything
+```
+
+**Rules enforced locally and in CI:**
+- Gitleaks (150+ secret patterns — API keys, tokens, private keys, …)
+- Custom patterns for `AGENTFLOW_ADMIN_TOKEN`, Langfuse keys, OpenRouter keys
+- `detect-private-key` — catches PEM files
+- `check-merge-conflict` — catches left-over conflict markers
+
+**Never put real values in `.env` files tracked by git.** Only `.env.example` (with placeholder values) is committed. All `.env.*` files are in `.gitignore`.
+
 ## Code conventions
 
 ### Backend
@@ -39,6 +65,7 @@ Follow the Quick start in [README.md](README.md).
 
 ## Pull request checklist
 
+- [ ] `pre-commit run --all-files` — no secrets detected
 - [ ] All tests pass: `uv run pytest`
 - [ ] Ruff clean: `uv run ruff check .`
 - [ ] Mypy clean: `uv run mypy agentflow/`

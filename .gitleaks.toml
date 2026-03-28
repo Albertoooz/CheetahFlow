@@ -1,0 +1,52 @@
+# Gitleaks configuration
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+
+title = "AgentFlow Gitleaks Config"
+
+[extend]
+# Extend the default rules shipped with Gitleaks
+useDefault = true
+
+# ── Custom rules ────────────────────────────────────────────────────────────
+
+[[rules]]
+id = "agentflow-admin-token"
+description = "AgentFlow admin token hardcoded"
+regex = '''AGENTFLOW_ADMIN_TOKEN\s*=\s*["']?[A-Za-z0-9_\-]{8,}["']?'''
+tags = ["agentflow", "token"]
+
+[[rules]]
+id = "langfuse-secret-key"
+description = "Langfuse secret key hardcoded"
+regex = '''sk-lf-[A-Za-z0-9]{20,}'''
+tags = ["langfuse", "key"]
+
+[[rules]]
+id = "langfuse-public-key"
+description = "Langfuse public key hardcoded"
+regex = '''pk-lf-[A-Za-z0-9]{20,}'''
+tags = ["langfuse", "key"]
+
+[[rules]]
+id = "openrouter-api-key"
+description = "OpenRouter API key hardcoded"
+regex = '''sk-or-[A-Za-z0-9\-_]{20,}'''
+tags = ["openrouter", "key"]
+
+# ── Allowlists ───────────────────────────────────────────────────────────────
+# Paths that are safe to skip (examples, test fixtures, docs)
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+  ".env.example",
+  ".gitleaks.toml",
+]
+
+# Allow placeholder values used in examples/docs
+regexes = [
+  "changeme",
+  "sk-lf-\\.\\.\\.\\.",
+  "pk-lf-\\.\\.\\.\\.",
+  "sk-or-\\.\\.\\.\\.",
+]

@@ -1,4 +1,4 @@
-# Contributing to AgentFlow Orchestrator
+# Contributing to CheetahFlow Orchestrator
 
 ## Development setup
 
@@ -24,7 +24,7 @@ pre-commit run --all-files    # scan everything
 
 **Rules enforced locally and in CI:**
 - Gitleaks (150+ secret patterns — API keys, tokens, private keys, …)
-- Custom patterns for `AGENTFLOW_ADMIN_TOKEN`, Langfuse keys, OpenRouter keys
+- Custom patterns for `CHEETAHFLOW_ADMIN_TOKEN`, Langfuse keys, OpenRouter keys
 - `detect-private-key` — catches PEM files
 - `check-merge-conflict` — catches left-over conflict markers
 

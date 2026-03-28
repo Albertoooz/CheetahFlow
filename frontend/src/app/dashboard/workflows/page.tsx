@@ -1,24 +1,38 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
-import { WorkflowDefinition, workflowsApi } from "@/lib/api";
+import { workflowsApi } from "@/lib/api";
+import type { WorkflowDefinition } from "@/types";
 
-export const dynamic = "force-dynamic";
+export default function WorkflowsPage() {
+  const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-export default async function WorkflowsPage() {
-  let workflows: WorkflowDefinition[] = [];
-  let error: string | null = null;
+  const load = useCallback(async () => {
+    try {
+      setWorkflows(await workflowsApi.list());
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  try {
-    workflows = await workflowsApi.list();
-  } catch (e) {
-    error = String(e);
-  }
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   return (
-    <div>
+    <div className="max-w-5xl mx-auto p-4 md:p-8">
       <PageHeader
         title="Workflow Definitions"
         description="Ordered stage pipelines: agent steps and human gates."
       />
+
+      {loading && <p className="text-sm text-slate-500 mb-4">Loading…</p>}
 
       {error && (
         <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
@@ -27,7 +41,7 @@ export default async function WorkflowsPage() {
       )}
 
       <div className="space-y-4">
-        {workflows.length === 0 && !error && (
+        {workflows.length === 0 && !error && !loading && (
           <p className="text-slate-400 text-sm py-8 text-center">No workflows defined yet.</p>
         )}
         {workflows.map((wf) => (

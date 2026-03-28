@@ -1,8 +1,54 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+import type {
+  AgentConfig,
+  Project,
+  Task,
+  WorkflowDefinition,
+  WorkflowRun,
+} from "@/types";
+
+export type {
+  AgentConfig,
+  AssigneeKind,
+  Project,
+  Stage,
+  Task,
+  TaskPriority,
+  WorkflowDefinition,
+  WorkflowRun,
+  WorkflowStep,
+} from "@/types";
+
+/** Server (RSC / Node): call backend directly. Browser: empty string = same-origin → Next.js rewrites → backend (no CORS). */
+function getApiBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    return "";
+  }
+  return (
+    process.env.NEXT_PUBLIC_API_URL ??
+    process.env.INTERNAL_API_URL ??
+    "http://127.0.0.1:8000"
+  );
+}
+
 const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? "";
 
+if (typeof window !== "undefined" && process.env.NODE_ENV === "development" && !ADMIN_TOKEN) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[CheetahFlow] NEXT_PUBLIC_ADMIN_TOKEN is empty. Create frontend/.env.local with NEXT_PUBLIC_ADMIN_TOKEN matching CHEETAHFLOW_ADMIN_TOKEN in backend/.env",
+  );
+}
+
+function buildUrl(path: string): string {
+  const base = getApiBaseUrl();
+  if (path.startsWith("http")) return path;
+  if (!base) return path.startsWith("/") ? path : `/${path}`;
+  return `${base.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const url = buildUrl(path);
+  const res = await fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -21,11 +67,23 @@ async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
 // ── Agents ──────────────────────────────────────────────────────────────────
 export const agentsApi = {
   list: () => req<AgentConfig[]>("/api/v1/agents"),
-  create: (body: Partial<AgentConfig>) =>
+  create: (body: Partial<AgentConfig> & { role_key?: string; display_name?: string }) =>
     req<AgentConfig>("/api/v1/agents", { method: "POST", body: JSON.stringify(body) }),
   update: (id: string, body: Partial<AgentConfig>) =>
     req<AgentConfig>(`/api/v1/agents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   delete: (id: string) => req<void>(`/api/v1/agents/${id}`, { method: "DELETE" }),
+};
+
+// ── Projects ─────────────────────────────────────────────────────────────────
+export const projectsApi = {
+  list: () => req<Project[]>("/api/v1/projects"),
+  get: (id: string) => req<Project>(`/api/v1/projects/${id}`),
+  create: (body: { name: string; description?: string | null; columns?: string[] }) =>
+    req<Project>("/api/v1/projects", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: string, body: Partial<{ name: string; description: string | null; columns: string[] }>) =>
+    req<Project>(`/api/v1/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  delete: (id: string) => req<void>(`/api/v1/projects/${id}`, { method: "DELETE" }),
+  tasks: (id: string) => req<Task[]>(`/api/v1/projects/${id}/tasks`),
 };
 
 // ── Workflows ────────────────────────────────────────────────────────────────
@@ -41,10 +99,11 @@ export const workflowsApi = {
 // ── Tasks ────────────────────────────────────────────────────────────────────
 export const tasksApi = {
   list: () => req<Task[]>("/api/v1/tasks"),
-  create: (body: Partial<Task>) =>
-    req<Task>("/api/v1/tasks", { method: "POST", body: JSON.stringify(body) }),
+  create: (body: Partial<Task>) => req<Task>("/api/v1/tasks", { method: "POST", body: JSON.stringify(body) }),
   update: (id: string, body: Partial<Task>) =>
     req<Task>(`/api/v1/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  move: (id: string, body: { status: string; position: number }) =>
+    req<Task>(`/api/v1/tasks/${id}/move`, { method: "PATCH", body: JSON.stringify(body) }),
   delete: (id: string) => req<void>(`/api/v1/tasks/${id}`, { method: "DELETE" }),
 };
 
@@ -60,78 +119,3 @@ export const runsApi = {
       body: JSON.stringify({ approved }),
     }),
 };
-
-// ── Types (mirror backend schemas) ───────────────────────────────────────────
-export interface AgentConfig {
-  id: string;
-  workspace_id: string;
-  role_key: string;
-  display_name: string;
-  model_provider: string;
-  model_name: string;
-  enabled: boolean;
-  instructions: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Stage {
-  id: string;
-  type: "agent" | "human_gate";
-  role_key?: string;
-  label?: string;
-  executor?: "openrouter" | "claude_code";
-}
-
-export interface WorkflowDefinition {
-  id: string;
-  workspace_id: string;
-  name: string;
-  is_default: boolean;
-  stages: Stage[];
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Task {
-  id: string;
-  workspace_id: string;
-  title: string;
-  body: string | null;
-  workflow_definition_id: string | null;
-  stage_overrides: Record<string, unknown> | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface WorkflowStep {
-  id: string;
-  run_id: string;
-  stage_index: number;
-  stage_id: string;
-  role_key: string | null;
-  executor: string | null;
-  status: string;
-  input_summary: string | null;
-  output_summary: string | null;
-  token_usage: Record<string, number> | null;
-  error_message: string | null;
-  langfuse_trace_id: string | null;
-  langfuse_observation_id: string | null;
-  started_at: string | null;
-  finished_at: string | null;
-  created_at: string;
-}
-
-export interface WorkflowRun {
-  id: string;
-  task_id: string;
-  workflow_definition_id: string;
-  status: string;
-  current_stage_index: number;
-  langgraph_thread_id: string | null;
-  langfuse_trace_id: string | null;
-  created_at: string;
-  updated_at: string;
-  steps: WorkflowStep[];
-}

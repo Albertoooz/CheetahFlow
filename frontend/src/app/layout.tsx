@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AgentFlow Orchestrator",
+  title: "CheetahFlow Orchestrator",
   description: "Self-hosted control plane for multi-agent dev workflows",
 };
 

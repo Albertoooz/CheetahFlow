@@ -1,22 +1,25 @@
 # AGENTS.md — Guide for AI Agents Working on This Repository
 
 This file gives AI coding agents (Cursor, Claude Code, Codex, etc.) the context
-needed to work effectively on **AgentFlow Orchestrator** without asking the operator
+needed to work effectively on **CheetahFlow Orchestrator** without asking the operator
 for basic context.
 
 ---
 
 ## Project overview
 
-AgentFlow is a self-hosted **control plane** for multi-agent dev workflows.  
+CheetahFlow is a self-hosted **control plane** for multi-agent dev workflows.  
 Stack: **FastAPI** backend + **Next.js** frontend + **PostgreSQL/SQLite** + **LangGraph** (Phase B) + **Langfuse** observability.
+
+> The Python module is named `agentflow` (internal implementation detail).  
+> All user-facing names, docs, and UI use **CheetahFlow**.
 
 ## Repository layout
 
 ```
 backend/
   agentflow/
-    config.py          # Pydantic Settings — all env vars live here
+    config.py          # Pydantic Settings — env prefix: CHEETAHFLOW_
     auth.py            # X-Admin-Token dependency
     observability.py   # Langfuse SDK init + @observe / propagate_attributes
     main.py            # FastAPI app, routers, startup/shutdown
@@ -37,6 +40,8 @@ frontend/
     components/        # Shared UI components
     lib/               # API client, utilities
     types/             # TypeScript types (mirror backend schemas)
+
+assets/                # Logo and static assets
 ```
 
 ## Key conventions
@@ -106,21 +111,22 @@ uv run uvicorn agentflow.main:app --reload --host 127.0.0.1 --port 8000
 
 # Frontend
 pnpm install          # from repo root
-pnpm dev              # starts Next.js on :3000 (or :3001)
+pnpm dev              # starts Next.js on :3001
 
 # With Postgres + Langfuse (optional)
 docker compose up -d postgres
-docker compose --profile langfuse up -d   # adds ClickHouse, Redis, MinIO, Langfuse
+docker compose --profile langfuse up -d   # adds ClickHouse, Redis, MinIO, Langfuse on :3100
 ```
 
 ## Environment variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `AGENTFLOW_DATABASE_URL` | Yes | SQLAlchemy URL (SQLite or asyncpg Postgres) |
-| `AGENTFLOW_ADMIN_TOKEN` | Yes | Value for `X-Admin-Token` header |
+| `CHEETAHFLOW_DATABASE_URL` | Yes | SQLAlchemy URL (SQLite or asyncpg Postgres) |
+| `CHEETAHFLOW_ADMIN_TOKEN` | Yes | Value for `X-Admin-Token` header |
 | `OPENROUTER_API_KEY` | Phase B | OpenRouter API key |
 | `LANGFUSE_SECRET_KEY` | Optional | Enables Langfuse tracing |
 | `LANGFUSE_PUBLIC_KEY` | Optional | Enables Langfuse tracing |
 | `LANGFUSE_BASE_URL` | Optional | Self-hosted Langfuse URL (default: cloud) |
 | `NEXT_PUBLIC_API_URL` | Frontend | Backend base URL for browser |
+| `NEXT_PUBLIC_ADMIN_TOKEN` | Frontend | Admin token for browser API calls |

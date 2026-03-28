@@ -13,6 +13,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -47,6 +48,7 @@ class Workspace(Base):
 
     agents: Mapped[list[AgentConfig]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
     workflow_definitions: Mapped[list[WorkflowDefinition]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
+    projects: Mapped[list[Project]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
     tasks: Mapped[list[Task]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
 
 
@@ -122,19 +124,60 @@ class Task(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[str | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     workflow_definition_id: Mapped[str | None] = mapped_column(
         ForeignKey("workflow_definitions.id"), nullable=True
     )
     title: Mapped[str] = mapped_column(String)
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Board column key (must match one of project.columns when project_id set)
+    status: Mapped[str] = mapped_column(String, default="backlog", index=True)
+    position: Mapped[float] = mapped_column(Float, default=0.0)
+    # low | medium | high | urgent
+    priority: Mapped[str] = mapped_column(String, default="medium")
+    assignee_type: Mapped[str | None] = mapped_column(String, nullable=True)  # agent | human
+    assignee_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agent_configs.id"), nullable=True)
+    assignee_human_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    reviewer_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    reviewer_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agent_configs.id"), nullable=True)
+    reviewer_human_name: Mapped[str | None] = mapped_column(String, nullable=True)
     # Optional per-task overrides for stages (e.g. swap model for this task)
     stage_overrides: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
     workspace: Mapped[Workspace] = relationship(back_populates="tasks")
+    project: Mapped[Project | None] = relationship(back_populates="tasks")
     workflow_definition: Mapped[WorkflowDefinition | None] = relationship()
     runs: Mapped[list[WorkflowRun]] = relationship(back_populates="task", cascade="all, delete-orphan")
+
+
+# ---------------------------------------------------------------------------
+# Projects (Kanban board context)
+# ---------------------------------------------------------------------------
+
+
+DEFAULT_PROJECT_COLUMNS = ["backlog", "todo", "in_progress", "review", "done"]
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Column keys for the board (order = left to right)
+    columns: Mapped[list[str]] = mapped_column(JSON, default=lambda: list(DEFAULT_PROJECT_COLUMNS))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    workspace: Mapped[Workspace] = relationship(back_populates="projects")
+    tasks: Mapped[list[Task]] = relationship(back_populates="project")
 
 
 # ---------------------------------------------------------------------------

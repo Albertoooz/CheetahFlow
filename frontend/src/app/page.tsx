@@ -9,18 +9,23 @@ export default function HomePage() {
             MVP — Phase A
           </div>
           <h1 className="text-5xl font-bold tracking-tight">
-            AgentFlow <span className="text-brand-500">Orchestrator</span>
+            CheetahFlow <span className="text-brand-500">Orchestrator</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-lg mx-auto">
             Self-hosted control plane for multi-agent development workflows. State, handoffs, and audit before merge.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-left">
           {[
-            { href: "/dashboard/agents", label: "Agents", desc: "Manage agent roles & models" },
-            { href: "/dashboard/workflows", label: "Workflows", desc: "Define ordered stage pipelines" },
-            { href: "/dashboard/tasks", label: "Tasks", desc: "Create tasks and trigger runs" },
+            {
+              href: "/dashboard/projects",
+              label: "Projects",
+              desc: "Per-project boards & Kanban",
+            },
+            { href: "/dashboard/agents", label: "Agents", desc: "Roles, models & instructions" },
+            { href: "/dashboard/workflows", label: "Workflows", desc: "Stage pipelines & gates" },
+            { href: "/dashboard/tasks", label: "All tasks", desc: "Global task list & runs" },
           ].map((item) => (
             <Link
               key={item.href}

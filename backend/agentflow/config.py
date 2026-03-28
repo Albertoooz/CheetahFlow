@@ -5,13 +5,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="AGENTFLOW_",
+        env_prefix="CHEETAHFLOW_",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
-    database_url: str = "sqlite+aiosqlite:///./agentflow.db"
+    database_url: str = "sqlite+aiosqlite:///./cheetahflow.db"
     admin_token: str = "changeme-admin-token-replace-in-production"
 
     # OpenRouter (populated in Phase B)

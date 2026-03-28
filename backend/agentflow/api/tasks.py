@@ -3,9 +3,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentflow.auth import require_admin
-from agentflow.db.models import Task, Workspace
+from agentflow.db.models import Project, Task, Workspace
 from agentflow.db.session import get_session
-from agentflow.schemas.tasks import TaskCreate, TaskRead, TaskUpdate
+from agentflow.schemas.tasks import TaskCreate, TaskMove, TaskRead, TaskUpdate
 
 router = APIRouter(prefix="/tasks", tags=["tasks"], dependencies=[Depends(require_admin)])
 
@@ -34,6 +34,28 @@ async def create_task(body: TaskCreate, session: AsyncSession = Depends(get_sess
     workspace = await _get_workspace(session)
     task = Task(workspace_id=workspace.id, **body.model_dump())
     session.add(task)
+    await session.commit()
+    await session.refresh(task)
+    return task
+
+
+@router.patch("/{task_id}/move", response_model=TaskRead)
+async def move_task(task_id: str, body: TaskMove, session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(Task).where(Task.id == task_id))
+    task = result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    if task.project_id:
+        pr = await session.execute(select(Project).where(Project.id == task.project_id))
+        project = pr.scalar_one_or_none()
+        if project and body.status not in (project.columns or []):
+            cols = ", ".join(project.columns or [])
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Status must be one of project columns: {cols}",
+            )
+    task.status = body.status
+    task.position = body.position
     await session.commit()
     await session.refresh(task)
     return task

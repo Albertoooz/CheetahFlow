@@ -1,3 +1,9 @@
+import os
+
+# Must be set before agentflow modules are imported so Settings picks them up
+os.environ.setdefault("CHEETAHFLOW_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+os.environ.setdefault("CHEETAHFLOW_ADMIN_TOKEN", "test-admin-token")
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -37,4 +43,4 @@ async def client():
     app.dependency_overrides.clear()
 
 
-ADMIN_HEADERS = {"X-Admin-Token": "changeme-admin-token-replace-in-production"}
+ADMIN_HEADERS = {"X-Admin-Token": "test-admin-token"}

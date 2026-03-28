@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  /** Reduces occasional stale vendor-chunk issues with Headless UI in monorepos. */
+  transpilePackages: ["@headlessui/react"],
   async rewrites() {
     return [
       {

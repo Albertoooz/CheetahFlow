@@ -1,7 +1,7 @@
 [project]
-name = "agentflow"
+name = "cheetahflow"
 version = "0.1.0"
-description = "AgentFlow Orchestrator — self-hosted control plane for multi-agent dev workflows"
+description = "CheetahFlow Orchestrator — self-hosted control plane for multi-agent dev workflows"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 
@@ -48,6 +48,9 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentflow"]
 
 [build-system]
 requires = ["hatchling"]

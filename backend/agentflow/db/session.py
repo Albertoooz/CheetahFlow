@@ -6,11 +6,16 @@ from agentflow.config import get_settings
 
 _settings = get_settings()
 
+_sqlite_connect = (
+    {"check_same_thread": False, "timeout": 60.0}
+    if "sqlite" in _settings.database_url
+    else {}
+)
+
 engine = create_async_engine(
     _settings.database_url,
     echo=False,
-    # SQLite: allow multiple concurrent readers by enabling WAL
-    connect_args={"check_same_thread": False} if "sqlite" in _settings.database_url else {},
+    connect_args=_sqlite_connect,
 )
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)

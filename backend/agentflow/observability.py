@@ -65,8 +65,7 @@ def _make_noop_propagate():
 
 if _langfuse_enabled:
     try:
-        from langfuse import get_client
-        from langfuse import observe, propagate_attributes  # noqa: F401
+        from langfuse import get_client, observe, propagate_attributes  # noqa: F401
 
         langfuse_client = get_client()
         logger.info("Langfuse observability enabled (base_url=%s)", settings.langfuse_base_url)

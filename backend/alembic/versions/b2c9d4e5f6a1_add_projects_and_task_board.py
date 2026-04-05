@@ -10,8 +10,9 @@ Idempotent: safe if SQLAlchemy create_all partially created tables/columns.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy import inspect
+
+from alembic import op
 
 revision: str = "b2c9d4e5f6a1"
 down_revision: str | None = "411552a3ef67"

@@ -4,6 +4,8 @@ This file gives AI coding agents (Cursor, Claude Code, GitHub Copilot, Codex, et
 
 **Cursor users:** additional guardrails live in [`.cursor/rules/`](.cursor/rules/) (`.mdc` files with globs). Those rules are Cursor-only; everything else is documented here.
 
+**GitHub:** the **`main`** branch is **protected** — direct pushes are blocked. Work on a **feature branch** and open a **pull request** (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
 ---
 
 ## Project overview
@@ -148,6 +150,7 @@ uv run alembic upgrade head
 | **SQLite lock during migration** | `await engine.dispose()` before `run_alembic_upgrade()` in `main.py` lifespan so the async engine releases the DB file. |
 | **Ports 8000 / 3001 in use** | Stop duplicate `uvicorn` / `next dev` or pick another port. |
 | **Frozen lockfile CI** | Run `pnpm install` from repo root when `frontend/package.json` changes; commit `pnpm-lock.yaml`. |
+| **Push to `main` rejected** | `main` is branch-protected — use a feature branch + PR; do not rely on `git push origin main`. |
 
 ---
 

@@ -4,6 +4,17 @@
 
 Follow the Quick start in [README.md](README.md).
 
+## Git workflow (branch protection)
+
+The **`main`** branch is **protected** on GitHub: you **cannot push directly** to `main`. All changes go through a **pull request**.
+
+1. Create a branch from `main`: `git checkout -b feat/your-topic` (or `fix/...`).
+2. Commit and push the branch: `git push -u origin feat/your-topic`.
+3. Open a **Pull Request** into `main` and wait for CI (and review if required).
+4. Merge via GitHub after approval.
+
+AI agents and local tools should follow the same flow: **never assume `git push origin main` will succeed** — use a feature branch and a PR unless the operator explicitly uses admin override.
+
 ## Secret scanning (required before first commit)
 
 This repo uses **Gitleaks** via pre-commit hooks to prevent secrets from ever entering git history.

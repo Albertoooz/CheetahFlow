@@ -1,0 +1,13 @@
+---
+description: SQLite, async, secrets, and Langfuse import guardrails for backend Python
+globs: backend/**/*.py
+alwaysApply: false
+---
+
+# Backend guardrails (CheetahFlow)
+
+- **SQLite migrations:** never use `op.create_foreign_key()` for SQLite dialect — use `op.batch_alter_table(...)` and add FKs inside the batch block. See existing migration `b2c9d4e5f6a1_*` for the pattern.
+- **Async:** route handlers, DB access, and adapter calls must be `async` / `await`. No blocking I/O on the event loop.
+- **Langfuse:** do not add new raw `from langfuse import ...` at module level in app code. Use `agentflow.observability` (`observe`, `propagate_attributes`, `langfuse_client`) only.
+- **Secrets:** never log raw API keys, admin tokens, or full LLM prompts to stdout, logs, or DB without redaction.
+- **Schema changes:** after editing `agentflow/db/models.py`, add an Alembic revision — do not rely on `create_all()` for existing SQLite files.

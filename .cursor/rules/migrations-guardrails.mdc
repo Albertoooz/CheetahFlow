@@ -1,0 +1,12 @@
+---
+description: Alembic migrations — SQLite batch mode and programmatic Config
+globs: backend/alembic/**/*.py
+alwaysApply: false
+---
+
+# Alembic guardrails (CheetahFlow)
+
+- **SQLite:** foreign keys and some constraint changes require `op.batch_alter_table("table")` — not bare `op.create_foreign_key` on SQLite.
+- **Idempotent upgrades:** where useful, guard with `inspect(bind)` checks (`_table_exists`, column sets) so a half-applied migration can be retried safely.
+- **env.py:** avoid loading `alembic.ini` via `fileConfig` when `migrate.py` builds `Config()` programmatically — the repo uses `Config()` without an ini path so startup logging is not reset to WARNING.
+- After editing a revision, verify: `cd backend && uv run alembic upgrade head` (and ideally downgrade/upgrade on a throwaway DB).

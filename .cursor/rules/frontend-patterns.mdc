@@ -1,0 +1,12 @@
+---
+description: Next.js frontend — API client, types, Tailwind
+globs: frontend/src/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend guardrails (CheetahFlow)
+
+- **API:** add new backend calls in `frontend/src/lib/api.ts` only — keep fetch logic centralized (browser uses same-origin `/api/v1/...` via Next rewrites).
+- **Types:** extend `frontend/src/types/index.ts` to match backend Pydantic schemas; avoid duplicating ad-hoc interfaces in random files.
+- **Styling:** Tailwind utility classes; avoid inline styles except for unavoidable third-party widgets.
+- **Layout:** pages under `src/app/dashboard/`; reusable UI under `src/components/ui/`; feature code under `src/components/<feature>/`.

@@ -1,22 +1,22 @@
 """Claude Code adapter — runs the `claude` CLI as a subprocess.
 
-Requires the Anthropic Claude Code CLI to be installed on the machine running
-the worker. Operators must satisfy Anthropic terms of service.
-
-Phase B TODO:
-- Implement real subprocess call with timeout + sandbox cwd
-- Parse JSON output from `claude --output-format json`
-- Redact sensitive content from logs
-- Add Langfuse span for subprocess duration
+Requires the Anthropic Claude Code CLI (`claude`) to be installed.
+Operators must satisfy Anthropic terms of service.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+import os
+import tempfile
 
 from agentflow.adapters.base import AdapterResult, BaseAdapter
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_TIMEOUT = 300  # seconds
 
 
 class ClaudeCodeAdapter(BaseAdapter):
@@ -33,38 +33,43 @@ class ClaudeCodeAdapter(BaseAdapter):
         step_id: str,
         trace_id: str | None = None,
     ) -> AdapterResult:
-        """
-        Phase B implementation outline:
-
-        import asyncio, json, shlex
-        from agentflow.observability import langfuse_client, observe
-
         cmd = ["claude", "--output-format", "json", "--print", prompt]
         if instructions:
             cmd += ["--system-prompt", instructions]
 
-        # Run with timeout to prevent runaway subprocesses
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd,  # sandboxed working directory from task config
-        )
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
-        except asyncio.TimeoutError:
-            proc.kill()
-            raise RuntimeError("Claude Code subprocess timed out after 300s")
+        # Use a per-step temp dir as sandbox cwd so the subprocess cannot
+        # accidentally modify the application working directory.
+        with tempfile.TemporaryDirectory(prefix=f"cf_step_{step_id[:8]}_") as sandbox_cwd:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=sandbox_cwd,
+                env={**os.environ, "CLAUDE_NO_COLOR": "1"},
+            )
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(), timeout=_DEFAULT_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.communicate()
+                raise RuntimeError(f"Claude Code subprocess timed out after {_DEFAULT_TIMEOUT}s")
 
-        data = json.loads(stdout)
+        if proc.returncode != 0:
+            err = (stderr or b"").decode(errors="replace")[:500]
+            raise RuntimeError(f"claude exited with code {proc.returncode}: {err}")
+
+        raw = (stdout or b"").decode(errors="replace")
+        try:
+            data = json.loads(raw)
+            output = data.get("result") or data.get("content") or raw
+        except json.JSONDecodeError:
+            output = raw
+
+        logger.info("[claude-code] run=%s step=%s role=%s exit=%s", run_id, step_id, role_key, proc.returncode)
         return AdapterResult(
-            output=data.get("result", ""),
-            metadata={"exit_code": proc.returncode},
-        )
-        """
-        logger.info("[claude-code-stub] run=%s step=%s role=%s", run_id, step_id, role_key)
-        return AdapterResult(
-            output=f"[STUB] Claude Code response for role {role_key}",
+            output=output,
             token_usage={},
-            metadata={"stub": True},
+            metadata={"exit_code": proc.returncode},
         )

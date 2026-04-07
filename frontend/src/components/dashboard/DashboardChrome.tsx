@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { ChevronDown, FolderKanban, LayoutGrid, ListTodo, Settings2, Users } from "lucide-react";
+import { ChevronDown, FolderKanban, LayoutGrid, ListTodo, Map, Settings2, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -121,6 +121,13 @@ export function DashboardChrome({ children }: { children: React.ReactNode }) {
               >
                 <ListTodo className="h-4 w-4 shrink-0" />
                 Tasks
+              </Link>
+              <Link
+                href={`/dashboard/projects/${projectId}/roadmap`}
+                className={navClass(pathname === `/dashboard/projects/${projectId}/roadmap`)}
+              >
+                <Map className="h-4 w-4 shrink-0" />
+                Roadmap
               </Link>
               <Link href="/dashboard/workflows" className={navClass(pathname?.startsWith("/dashboard/workflows") ?? false)}>
                 <Settings2 className="h-4 w-4 shrink-0" />

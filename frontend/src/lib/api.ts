@@ -1,6 +1,7 @@
 import type {
   AgentConfig,
   Project,
+  RoadmapItem,
   Task,
   WorkflowDefinition,
   WorkflowRun,
@@ -10,6 +11,8 @@ export type {
   AgentConfig,
   AssigneeKind,
   Project,
+  RoadmapItem,
+  SplitPreviewTask,
   Stage,
   Task,
   TaskPriority,
@@ -118,4 +121,26 @@ export const runsApi = {
       method: "POST",
       body: JSON.stringify({ approved }),
     }),
+  /** Returns an EventSource that streams run status updates. Close it when done. */
+  stream: (taskId: string, runId: string): EventSource =>
+    new EventSource(buildUrl(`/api/v1/tasks/${taskId}/runs/${runId}/stream`)),
+};
+
+// ── Roadmap ───────────────────────────────────────────────────────────────────
+export const roadmapApi = {
+  list: (projectId: string) => req<RoadmapItem[]>(`/api/v1/projects/${projectId}/roadmap`),
+  create: (projectId: string, body: { title: string; description?: string | null }) =>
+    req<RoadmapItem>(`/api/v1/projects/${projectId}/roadmap`, { method: "POST", body: JSON.stringify(body) }),
+  update: (projectId: string, itemId: string, body: Partial<RoadmapItem>) =>
+    req<RoadmapItem>(`/api/v1/projects/${projectId}/roadmap/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  delete: (projectId: string, itemId: string) =>
+    req<void>(`/api/v1/projects/${projectId}/roadmap/${itemId}`, { method: "DELETE" }),
+  split: (projectId: string, itemId: string) =>
+    req<{ tasks: import("@/types").SplitPreviewTask[] }>(
+      `/api/v1/projects/${projectId}/roadmap/${itemId}/split`,
+      { method: "POST" },
+    ),
 };

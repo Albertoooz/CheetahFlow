@@ -9,6 +9,78 @@ import { agentsApi } from "@/lib/api";
 import type { AgentConfig } from "@/types";
 import { ModelSelector } from "./ModelSelector";
 
+const CAPABILITY_OPTIONS = [
+  "architecture",
+  "code",
+  "review",
+  "testing",
+  "documentation",
+  "planning",
+  "devops",
+  "security",
+];
+
+const PRESETS: {
+  label: string;
+  role_key: string;
+  display_name: string;
+  model_name: string;
+  model_provider: string;
+  capabilities: string[];
+  instructions: string;
+}[] = [
+  {
+    label: "Architect",
+    role_key: "architect",
+    display_name: "Architect",
+    model_name: "openai/gpt-4o",
+    model_provider: "openrouter",
+    capabilities: ["architecture", "planning"],
+    instructions:
+      "You are a senior software architect. Analyze requirements, identify key design decisions, define interfaces and module boundaries. Produce clear architectural diagrams or descriptions. Prioritize simplicity, maintainability, and scalability.",
+  },
+  {
+    label: "Developer",
+    role_key: "developer",
+    display_name: "Developer",
+    model_name: "openai/gpt-4o-mini",
+    model_provider: "openrouter",
+    capabilities: ["code"],
+    instructions:
+      "You are an expert software developer. Write clean, well-tested code following the project conventions. Implement the task described. Return only the relevant code changes or file contents.",
+  },
+  {
+    label: "Tester",
+    role_key: "tester",
+    display_name: "Tester",
+    model_name: "openai/gpt-4o-mini",
+    model_provider: "openrouter",
+    capabilities: ["testing"],
+    instructions:
+      "You are a QA engineer. Write comprehensive unit and integration tests for the given code. Cover edge cases, error paths, and happy paths. Use pytest conventions.",
+  },
+  {
+    label: "Code Reviewer",
+    role_key: "reviewer",
+    display_name: "Code Reviewer",
+    model_name: "anthropic/claude-3.5-sonnet",
+    model_provider: "openrouter",
+    capabilities: ["review", "security"],
+    instructions:
+      "You are a senior code reviewer. Review the provided code for correctness, security vulnerabilities, performance issues, and adherence to best practices. Provide actionable, specific feedback.",
+  },
+  {
+    label: "Task Splitter",
+    role_key: "task_splitter",
+    display_name: "Task Splitter",
+    model_name: "openai/gpt-4o-mini",
+    model_provider: "openrouter",
+    capabilities: ["planning"],
+    instructions:
+      "You are a project management assistant. Given a feature description, break it into concrete, actionable development tasks. Return ONLY a valid JSON array with no markdown fences. Each object must have: title (string), body (string or null), priority (low|medium|high|urgent).",
+  },
+];
+
 export function AgentForm({
   open,
   onClose,
@@ -25,6 +97,7 @@ export function AgentForm({
   const [provider, setProvider] = useState("openrouter");
   const [modelName, setModelName] = useState("openai/gpt-4o-mini");
   const [instructions, setInstructions] = useState("");
+  const [capabilities, setCapabilities] = useState<string[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +111,7 @@ export function AgentForm({
       setProvider(agent.model_provider);
       setModelName(agent.model_name);
       setInstructions(agent.instructions ?? "");
+      setCapabilities(agent.capabilities ?? []);
       setEnabled(agent.enabled);
     } else {
       setRoleKey("");
@@ -45,9 +119,27 @@ export function AgentForm({
       setProvider("openrouter");
       setModelName("openai/gpt-4o-mini");
       setInstructions("");
+      setCapabilities([]);
       setEnabled(true);
     }
   }, [open, agent]);
+
+  function applyPreset(preset: (typeof PRESETS)[number]) {
+    if (!agent) {
+      setRoleKey(preset.role_key);
+      setDisplayName(preset.display_name);
+    }
+    setProvider(preset.model_provider);
+    setModelName(preset.model_name);
+    setCapabilities(preset.capabilities);
+    setInstructions(preset.instructions);
+  }
+
+  function toggleCapability(cap: string) {
+    setCapabilities((prev) =>
+      prev.includes(cap) ? prev.filter((c) => c !== cap) : [...prev, cap],
+    );
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -60,6 +152,7 @@ export function AgentForm({
           model_provider: provider,
           model_name: modelName,
           instructions: instructions || null,
+          capabilities,
           enabled,
         });
       } else {
@@ -74,6 +167,7 @@ export function AgentForm({
           model_provider: provider,
           model_name: modelName,
           instructions: instructions || null,
+          capabilities,
           enabled,
         });
       }
@@ -89,6 +183,25 @@ export function AgentForm({
   return (
     <Dialog open={open} onClose={onClose} title={agent ? "Edit agent" : "New agent"} size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Presets */}
+        {!agent && (
+          <div>
+            <p className="text-xs font-medium text-slate-500 mb-2">Presets</p>
+            <div className="flex flex-wrap gap-2">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.role_key}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  className="px-3 py-1 rounded-full border border-slate-200 bg-slate-50 text-xs text-slate-700 hover:border-brand-400 hover:bg-brand-50 transition-colors"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Role key</label>
@@ -115,11 +228,34 @@ export function AgentForm({
         />
 
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Instructions</label>
+          <label className="block text-xs font-medium text-slate-500 mb-2">Capabilities</label>
+          <div className="flex flex-wrap gap-2">
+            {CAPABILITY_OPTIONS.map((cap) => (
+              <button
+                key={cap}
+                type="button"
+                onClick={() => toggleCapability(cap)}
+                className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                  capabilities.includes(cap)
+                    ? "bg-brand-500 border-brand-500 text-white"
+                    : "border-slate-200 text-slate-600 hover:border-brand-400"
+                }`}
+              >
+                {cap}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">
+            System instructions
+          </label>
           <Textarea
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
             placeholder="System / role instructions for this agent…"
+            rows={6}
           />
         </div>
 

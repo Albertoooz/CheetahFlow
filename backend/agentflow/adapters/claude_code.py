@@ -51,10 +51,12 @@ class ClaudeCodeAdapter(BaseAdapter):
                 stdout, stderr = await asyncio.wait_for(
                     proc.communicate(), timeout=_DEFAULT_TIMEOUT
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError as exc:
                 proc.kill()
                 await proc.communicate()
-                raise RuntimeError(f"Claude Code subprocess timed out after {_DEFAULT_TIMEOUT}s")
+                raise RuntimeError(
+                    f"Claude Code subprocess timed out after {_DEFAULT_TIMEOUT}s"
+                ) from exc
 
         if proc.returncode != 0:
             err = (stderr or b"").decode(errors="replace")[:500]

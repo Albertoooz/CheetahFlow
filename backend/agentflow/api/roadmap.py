@@ -154,7 +154,7 @@ async def split_roadmap_item(
         tasks = _placeholder_split(item.title)
 
     # Persist tasks linked to this roadmap item
-    ws_result = await session.execute(select(Workspace).where(Workspace.slug == "default"))
+    ws_result = await session.execute(select(Workspace).where(Workspace.slug == _WORKSPACE_SLUG))
     workspace = ws_result.scalar_one_or_none()
     if workspace:
         for t in tasks:

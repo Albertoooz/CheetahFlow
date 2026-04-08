@@ -200,12 +200,24 @@ async def split_roadmap_item(
 
 def _sanitize_for_log(value):
     """
-    Remove newline and carriage return characters from values before logging
-    to reduce the risk of log injection when logging user-controlled data.
+    Normalize values before logging to reduce the risk of log injection when
+    logging user-controlled data. This removes control characters (including
+    newlines and carriage returns) and ensures the result is a single line.
     """
-    if isinstance(value, str):
-        return value.replace("\r", "").replace("\n", "")
-    return value
+    # Convert non-string values to string representation
+    if not isinstance(value, str):
+        value = str(value)
+
+    # Remove ASCII control characters (0x00-0x1F and 0x7F), including \r and \n
+    # to prevent forged or split log lines.
+    sanitized = "".join(ch for ch in value if " " <= ch <= "~")
+
+    # Optionally, guard against excessively long values in logs.
+    max_len = 1000
+    if len(sanitized) > max_len:
+        sanitized = sanitized[:max_len] + "…"
+
+    return sanitized
 
 
 def _build_split_prompt(title: str, description: str) -> str:

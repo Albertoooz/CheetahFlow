@@ -198,11 +198,17 @@ async def split_roadmap_item(
         ) from exc
 
 
-def _sanitize_for_log(value):
+def _sanitize_for_log(value) -> str:
     """
     Normalize values before logging to reduce the risk of log injection when
-    logging user-controlled data. This removes control characters (including
-    newlines and carriage returns) and ensures the result is a single line.
+    logging user-controlled data.
+
+    - Converts non-string values to their string representation.
+    - Removes ASCII control characters (0x00–0x1F and 0x7F), including CR/LF,
+      so the result is always a single logical line.
+    - Normalizes whitespace and trims leading/trailing spaces to avoid
+      visually confusing log entries.
+    - Truncates very long values to a safe maximum length.
     """
     # Convert non-string values to string representation
     if not isinstance(value, str):
@@ -212,7 +218,10 @@ def _sanitize_for_log(value):
     # to prevent forged or split log lines.
     sanitized = "".join(ch for ch in value if " " <= ch <= "~")
 
-    # Optionally, guard against excessively long values in logs.
+    # Normalize internal whitespace to single spaces and strip edges
+    sanitized = " ".join(sanitized.split())
+
+    # Guard against excessively long values in logs.
     max_len = 1000
     if len(sanitized) > max_len:
         sanitized = sanitized[:max_len] + "…"

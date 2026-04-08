@@ -178,8 +178,8 @@ async def split_roadmap_item(
     except Exception as exc:
         logger.exception(
             "Roadmap split failed for project=%s item=%s",
-            project_id,
-            item_id,
+            _sanitize_for_log(project_id),
+            _sanitize_for_log(item_id),
         )
         await session.rollback()
         result = await session.execute(
@@ -196,6 +196,16 @@ async def split_roadmap_item(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Splitting failed. Status was restored; you can try again.",
         ) from exc
+
+
+def _sanitize_for_log(value):
+    """
+    Remove newline and carriage return characters from values before logging
+    to reduce the risk of log injection when logging user-controlled data.
+    """
+    if isinstance(value, str):
+        return value.replace("\r", "").replace("\n", "")
+    return value
 
 
 def _build_split_prompt(title: str, description: str) -> str:

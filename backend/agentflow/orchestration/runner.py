@@ -1,17 +1,15 @@
-"""Workflow runner — linear pipeline orchestrator (Phase A stub, Phase B: LangGraph).
+"""Workflow runner — linear pipeline orchestrator (Phase A/B).
 
 Each run iterates through workflow stages in order:
-- agent stages → dispatched to the appropriate adapter
+- agent stages → dispatched to the appropriate adapter, looking up AgentConfig
 - human_gate stages → run paused, waiting for /resume endpoint
 
-Every step is recorded in workflow_steps.  Langfuse tracing wraps the entire
+Every step is recorded in workflow_steps. Langfuse tracing wraps the entire
 run and each individual step so the observability dashboard shows a full trace
 hierarchy: run → steps → LLM generations.
 
 Phase B TODO:
 - Replace simple loop with LangGraph graph (enables checkpointing + resumption)
-- Pass actual task body / context as the prompt
-- Build prompt from prior step outputs (chain context)
 """
 
 from __future__ import annotations
@@ -20,9 +18,11 @@ import logging
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from agentflow.adapters import AdapterResult, adapter_registry
+from agentflow.db.agent_lookup import get_enabled_agent_by_role_key
 from agentflow.db.models import WorkflowRun, WorkflowStep
 from agentflow.db.session import AsyncSessionLocal
 from agentflow.observability import observe, propagate_attributes
@@ -54,7 +54,6 @@ async def _execute_run(run_id: str) -> None:
         stages = run.definition.stages or []
         task = run.task
 
-        # Propagate metadata to all child Langfuse spans
         with propagate_attributes(
             session_id=f"run-{run_id}",
             metadata={
@@ -67,6 +66,9 @@ async def _execute_run(run_id: str) -> None:
             await session.commit()
 
             start_index = run.current_stage_index
+            prior_outputs = await _load_prior_agent_outputs(
+                session, run_id, stages, start_index
+            )
 
             for idx, stage in enumerate(stages):
                 if idx < start_index:
@@ -75,7 +77,6 @@ async def _execute_run(run_id: str) -> None:
                 stage_type = stage.get("type")
                 stage_id = stage.get("id", str(idx))
 
-                # Create step record
                 step = WorkflowStep(
                     run_id=run_id,
                     stage_index=idx,
@@ -99,18 +100,31 @@ async def _execute_run(run_id: str) -> None:
                     return
 
                 if stage_type == "agent":
+                    role_key = stage.get("role_key", "unknown")
+
+                    # Look up AgentConfig by role_key to get model and instructions
+                    agent_config = await get_enabled_agent_by_role_key(session, role_key)
+                    model_name = agent_config.model_name if agent_config else "openai/gpt-4o-mini"
+                    instructions = agent_config.instructions if agent_config else None
+
+                    # Build prompt: task body + chain context from prior step outputs
+                    prompt = _build_prompt(task.title, task.body, prior_outputs, stage)
+
                     try:
                         result_data = await _run_agent_step(
                             stage=stage,
-                            task_prompt=task.body or task.title,
+                            task_prompt=prompt,
+                            model_name=model_name,
+                            instructions=instructions,
                             run_id=run_id,
                             step_id=step.id,
                         )
                         step.status = "completed"
-                        step.output_summary = result_data.output[:2000]  # truncate for DB
+                        step.output_summary = result_data.output[:2000]
                         step.token_usage = result_data.token_usage
                         step.langfuse_observation_id = result_data.langfuse_observation_id
                         step.finished_at = datetime.utcnow()
+                        prior_outputs.append(result_data.output[:1000])
                     except Exception as exc:
                         step.status = "failed"
                         step.error_message = str(exc)[:500]
@@ -127,11 +141,71 @@ async def _execute_run(run_id: str) -> None:
             logger.info("Run %s completed successfully", run_id)
 
 
+async def _load_prior_agent_outputs(
+    session: AsyncSession,
+    run_id: str,
+    stages: list[dict],
+    start_index: int,
+) -> list[str]:
+    """Rebuild the agent context chain when resuming (e.g. after a human gate).
+
+    Fresh runs use start_index 0 and return []. On resume, completed agent steps
+    before ``start_index`` already have ``output_summary`` persisted — use that so
+    subsequent agent prompts keep prior step context.
+    """
+    if start_index <= 0:
+        return []
+
+    result = await session.execute(
+        select(WorkflowStep)
+        .where(
+            WorkflowStep.run_id == run_id,
+            WorkflowStep.stage_index < start_index,
+        )
+        .order_by(WorkflowStep.stage_index.asc())
+    )
+    by_index = {s.stage_index: s for s in result.scalars().all()}
+
+    prior: list[str] = []
+    for idx in range(start_index):
+        if idx >= len(stages):
+            break
+        if stages[idx].get("type") != "agent":
+            continue
+        step = by_index.get(idx)
+        if step is None or step.status != "completed" or not step.output_summary:
+            continue
+        prior.append(step.output_summary[:1000])
+
+    return prior
+
+
+def _build_prompt(
+    task_title: str,
+    task_body: str | None,
+    prior_outputs: list[str],
+    stage: dict,
+) -> str:
+    parts = [f"Task: {task_title}"]
+    if task_body:
+        parts.append(f"Description:\n{task_body}")
+    if prior_outputs:
+        parts.append("Prior step outputs (context chain):")
+        for i, out in enumerate(prior_outputs, 1):
+            parts.append(f"  Step {i}: {out}")
+    label = stage.get("label", "")
+    if label:
+        parts.append(f"Current stage: {label}")
+    return "\n\n".join(parts)
+
+
 @observe(name="agent-step", as_type="span")
 async def _run_agent_step(
     *,
     stage: dict,
     task_prompt: str,
+    model_name: str,
+    instructions: str | None,
     run_id: str,
     step_id: str,
 ) -> AdapterResult:
@@ -139,10 +213,6 @@ async def _run_agent_step(
     executor = stage.get("executor", "openrouter")
     role_key = stage.get("role_key", "unknown")
     adapter = adapter_registry.get(executor)
-
-    # In Phase B: look up AgentConfig for this role_key and get model_name + instructions
-    model_name = "openai/gpt-4o-mini"
-    instructions = None
 
     return await adapter.execute(
         role_key=role_key,

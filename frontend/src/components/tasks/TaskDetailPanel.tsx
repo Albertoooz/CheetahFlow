@@ -2,14 +2,14 @@
 
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from "@headlessui/react";
 import clsx from "clsx";
-import { Trash2 } from "lucide-react";
+import { Play, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { StatusBadge } from "@/components/StatusBadge";
 import { Textarea } from "@/components/ui/Textarea";
 import { AssigneeSelector } from "@/components/tasks/AssigneeSelector";
+import { RunStatusPanel } from "./RunStatusPanel";
 import { agentsApi, runsApi, tasksApi, workflowsApi } from "@/lib/api";
 import type { AgentConfig, Project, Task, TaskPriority, WorkflowDefinition, WorkflowRun } from "@/types";
 
@@ -43,6 +43,7 @@ export function TaskDetailPanel({
   const [reviewerAgentId, setReviewerAgentId] = useState<string | null>(null);
   const [reviewerHuman, setReviewerHuman] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [triggering, setTriggering] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadMeta = useCallback(async () => {
@@ -108,6 +109,26 @@ export function TaskDetailPanel({
     } finally {
       setSaving(false);
     }
+  }
+
+  async function triggerRun() {
+    if (!task) return;
+    setTriggering(true);
+    setError(null);
+    try {
+      const run = await runsApi.trigger(task.id, workflowId ? { workflow_definition_id: workflowId } : undefined);
+      setRuns((prev) => [run, ...prev]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to trigger run");
+    } finally {
+      setTriggering(false);
+    }
+  }
+
+  async function handleResume(runId: string, approved: boolean) {
+    if (!task) return;
+    const updated = await runsApi.resume(task.id, runId, approved);
+    setRuns((prev) => prev.map((r) => (r.id === runId ? updated : r)));
   }
 
   async function remove() {
@@ -228,18 +249,32 @@ export function TaskDetailPanel({
             </div>
 
             <div>
-              <h3 className="text-sm font-semibold text-slate-800 mb-2">Runs</h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-slate-800">Execution</h3>
+                <Button
+                  className="h-8 px-3 text-xs flex items-center gap-1.5"
+                  onClick={() => void triggerRun()}
+                  disabled={triggering || !workflowId}
+                  title={!workflowId ? "Assign a workflow first" : "Trigger a new run"}
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  {triggering ? "Starting…" : "Run Workflow"}
+                </Button>
+              </div>
               {runs.length === 0 ? (
-                <p className="text-sm text-slate-400">No runs yet.</p>
+                <p className="text-sm text-slate-400">
+                  {workflowId ? "No runs yet." : "Assign a workflow above to enable runs."}
+                </p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {runs.map((run) => (
-                    <div key={run.id} className="rounded-lg border border-slate-100 p-3 text-sm">
-                      <div className="flex items-center justify-between gap-2">
-                        <StatusBadge status={run.status} />
-                        <span className="text-xs text-slate-400">{run.id.slice(0, 8)}…</span>
-                      </div>
-                    </div>
+                    <RunStatusPanel
+                      key={run.id}
+                      taskId={task.id}
+                      runId={run.id}
+                      initialRun={run}
+                      onResume={(approved) => handleResume(run.id, approved)}
+                    />
                   ))}
                 </div>
               )}

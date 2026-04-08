@@ -1,4 +1,8 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+import asyncio
+import json
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -136,3 +140,45 @@ async def cancel_run(task_id: str, run_id: str, session: AsyncSession = Depends(
         )
     run.status = "cancelled"
     await session.commit()
+
+
+@router.get("/{run_id}/stream")
+async def stream_run(
+    task_id: str,
+    run_id: str,
+    request: Request,
+):
+    """Server-Sent Events endpoint — pushes run status updates every second until terminal."""
+    from agentflow.db.session import AsyncSessionLocal
+
+    _TERMINAL = {"completed", "failed", "cancelled"}
+
+    async def event_generator():
+        while True:
+            if await request.is_disconnected():
+                break
+            async with AsyncSessionLocal() as sess:
+                q = await sess.execute(
+                    select(WorkflowRun)
+                    .where(WorkflowRun.id == run_id, WorkflowRun.task_id == task_id)
+                    .options(selectinload(WorkflowRun.steps))
+                )
+                run = q.scalar_one_or_none()
+            if run is None:
+                yield f"event: error\ndata: {json.dumps({'detail': 'Run not found'})}\n\n"
+                break
+            payload = WorkflowRunRead.model_validate(run).model_dump_json()
+            yield f"data: {payload}\n\n"
+            if run.status in _TERMINAL:
+                yield "event: done\ndata: {}\n\n"
+                break
+            await asyncio.sleep(1)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

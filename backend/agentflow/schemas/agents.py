@@ -10,6 +10,7 @@ class AgentConfigBase(BaseModel):
     model_name: str = Field("openai/gpt-4o-mini", examples=["openai/gpt-4o-mini"])
     enabled: bool = True
     instructions: str | None = None
+    capabilities: list[str] = Field(default_factory=list, examples=[["code", "review"]])
 
 
 class AgentConfigCreate(AgentConfigBase):
@@ -22,6 +23,7 @@ class AgentConfigUpdate(BaseModel):
     model_name: str | None = None
     enabled: bool | None = None
     instructions: str | None = None
+    capabilities: list[str] | None = None
 
 
 class AgentConfigRead(AgentConfigBase):

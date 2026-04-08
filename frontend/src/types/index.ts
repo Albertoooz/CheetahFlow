@@ -10,6 +10,7 @@ export interface AgentConfig {
   model_name: string;
   enabled: boolean;
   instructions: string | null;
+  capabilities: string[];
   created_at: string;
   updated_at: string;
 }
@@ -47,6 +48,7 @@ export interface Task {
   id: string;
   workspace_id: string;
   project_id: string | null;
+  roadmap_item_id: string | null;
   title: string;
   body: string | null;
   workflow_definition_id: string | null;
@@ -62,6 +64,22 @@ export interface Task {
   reviewer_human_name: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface RoadmapItem {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string | null;
+  status: "draft" | "splitting" | "ready" | "in_progress" | "done";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SplitPreviewTask {
+  title: string;
+  body: string | null;
+  priority: TaskPriority;
 }
 
 export interface WorkflowStep {

@@ -12,6 +12,7 @@ from sqlalchemy import select
 from agentflow.api.agents import router as agents_router
 from agentflow.api.health import router as health_router
 from agentflow.api.projects import router as projects_router
+from agentflow.api.roadmap import router as roadmap_router
 from agentflow.api.runs import router as runs_router
 from agentflow.api.tasks import router as tasks_router
 from agentflow.api.workflows import router as workflows_router
@@ -79,3 +80,4 @@ app.include_router(workflows_router, prefix="/api/v1")
 app.include_router(projects_router, prefix="/api/v1")
 app.include_router(tasks_router, prefix="/api/v1")
 app.include_router(runs_router, prefix="/api/v1")
+app.include_router(roadmap_router, prefix="/api/v1")

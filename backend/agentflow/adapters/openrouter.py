@@ -1,19 +1,13 @@
-"""OpenRouter adapter — calls OpenRouter via the OpenAI-compatible API.
-
-Langfuse tracing is applied via the langfuse.openai drop-in wrapper so every
-LLM call is automatically recorded as a generation under the active trace.
-
-Phase B TODO:
-- Implement real API call (currently stub)
-- Handle streaming responses
-- Propagate token usage from OpenRouter's usage accounting
-"""
+"""OpenRouter adapter — calls OpenRouter via the OpenAI-compatible HTTP API."""
 
 from __future__ import annotations
 
 import logging
 
+import httpx
+
 from agentflow.adapters.base import AdapterResult, BaseAdapter
+from agentflow.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,41 +26,52 @@ class OpenRouterAdapter(BaseAdapter):
         step_id: str,
         trace_id: str | None = None,
     ) -> AdapterResult:
-        """
-        Phase B implementation outline:
-
-        from agentflow.config import get_settings
-        from langfuse.openai import openai as lf_openai
-
         settings = get_settings()
-        client = lf_openai.AsyncOpenAI(
-            api_key=settings.openrouter_api_key,
-            base_url="https://openrouter.ai/api/v1",
-        )
-        messages = []
+
+        if not settings.openrouter_api_key:
+            logger.warning(
+                "[openrouter-stub] OPENROUTER_API_KEY not set — returning stub. run=%s step=%s",
+                run_id, step_id,
+            )
+            return AdapterResult(
+                output=f"[STUB] OpenRouter response from {model_name} for role {role_key}",
+                token_usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                metadata={"stub": True},
+            )
+
+        messages: list[dict] = []
         if instructions:
             messages.append({"role": "system", "content": instructions})
         messages.append({"role": "user", "content": prompt})
 
-        response = await client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            extra_body={"usage": {"include": True}},
-            name=f"{role_key}-step",
-        )
-        content = response.choices[0].message.content or ""
-        usage = {}
-        if response.usage:
-            usage = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.openrouter_api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/Albertoooz/CheetahFlow",
+                    "X-Title": "CheetahFlow",
+                },
+                json={
+                    "model": model_name,
+                    "messages": messages,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        content: str = data["choices"][0]["message"]["content"] or ""
+        token_usage: dict = {}
+        if usage := data.get("usage"):
+            token_usage = {
+                "prompt_tokens": usage.get("prompt_tokens", 0),
+                "completion_tokens": usage.get("completion_tokens", 0),
+                "total_tokens": usage.get("total_tokens", 0),
             }
-        return AdapterResult(output=content, token_usage=usage)
-        """
-        logger.info("[openrouter-stub] run=%s step=%s role=%s model=%s", run_id, step_id, role_key, model_name)
-        return AdapterResult(
-            output=f"[STUB] OpenRouter response from {model_name} for role {role_key}",
-            token_usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-            metadata={"stub": True},
+
+        logger.info(
+            "[openrouter] run=%s step=%s role=%s model=%s tokens=%s",
+            run_id, step_id, role_key, model_name, token_usage.get("total_tokens"),
         )
+        return AdapterResult(output=content, token_usage=token_usage)

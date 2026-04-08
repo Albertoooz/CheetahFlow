@@ -19,6 +19,53 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT = 300  # seconds
 
 
+def _claude_subprocess_env() -> dict[str, str]:
+    """Build env for the Claude CLI child process.
+
+    Do **not** pass the full ``os.environ``: the CLI handles user-influenced
+    prompts, and exposing CheetahFlow secrets (``CHEETAHFLOW_*`` DB URL, admin
+    token, app API keys, Langfuse keys) would allow exfiltration. We allowlist
+    only locale/path/OS plumbing plus Anthropic credentials the CLI needs.
+    """
+    safe_keys = {
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "TERM",
+        "TMPDIR",
+        "TZ",
+        "XDG_CONFIG_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_DATA_HOME",
+    }
+    if os.name == "nt":
+        safe_keys |= {
+            "SYSTEMROOT",
+            "WINDIR",
+            "PATHEXT",
+            "COMSPEC",
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+        }
+
+    out: dict[str, str] = {"CLAUDE_NO_COLOR": "1"}
+    for key in safe_keys:
+        val = os.environ.get(key)
+        if val is not None:
+            out[key] = val
+    for key in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"):
+        val = os.environ.get(key)
+        if val is not None:
+            out[key] = val
+    return out
+
+
 class ClaudeCodeAdapter(BaseAdapter):
     name = "claude_code"
 
@@ -45,7 +92,7 @@ class ClaudeCodeAdapter(BaseAdapter):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=sandbox_cwd,
-                env={**os.environ, "CLAUDE_NO_COLOR": "1"},
+                env=_claude_subprocess_env(),
             )
             try:
                 stdout, stderr = await asyncio.wait_for(

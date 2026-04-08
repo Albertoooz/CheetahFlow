@@ -13,6 +13,7 @@ class TaskBase(BaseModel):
     title: str
     body: str | None = None
     project_id: str | None = None
+    roadmap_item_id: str | None = None
     workflow_definition_id: str | None = None
     stage_overrides: dict[str, Any] | None = None
     status: str = "backlog"
@@ -34,6 +35,7 @@ class TaskUpdate(BaseModel):
     title: str | None = None
     body: str | None = None
     project_id: str | None = None
+    roadmap_item_id: str | None = None
     workflow_definition_id: str | None = None
     stage_overrides: dict[str, Any] | None = None
     status: str | None = None

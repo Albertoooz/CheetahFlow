@@ -18,10 +18,12 @@ import logging
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from agentflow.adapters import AdapterResult, adapter_registry
-from agentflow.db.models import AgentConfig, WorkflowRun, WorkflowStep
+from agentflow.db.agent_lookup import get_enabled_agent_by_role_key
+from agentflow.db.models import WorkflowRun, WorkflowStep
 from agentflow.db.session import AsyncSessionLocal
 from agentflow.observability import observe, propagate_attributes
 
@@ -64,7 +66,9 @@ async def _execute_run(run_id: str) -> None:
             await session.commit()
 
             start_index = run.current_stage_index
-            prior_outputs: list[str] = []
+            prior_outputs = await _load_prior_agent_outputs(
+                session, run_id, stages, start_index
+            )
 
             for idx, stage in enumerate(stages):
                 if idx < start_index:
@@ -99,13 +103,7 @@ async def _execute_run(run_id: str) -> None:
                     role_key = stage.get("role_key", "unknown")
 
                     # Look up AgentConfig by role_key to get model and instructions
-                    agent_result = await session.execute(
-                        select(AgentConfig).where(
-                            AgentConfig.role_key == role_key,
-                            AgentConfig.enabled == True,  # noqa: E712
-                        )
-                    )
-                    agent_config = agent_result.scalar_one_or_none()
+                    agent_config = await get_enabled_agent_by_role_key(session, role_key)
                     model_name = agent_config.model_name if agent_config else "openai/gpt-4o-mini"
                     instructions = agent_config.instructions if agent_config else None
 
@@ -141,6 +139,45 @@ async def _execute_run(run_id: str) -> None:
             run.status = "completed"
             await session.commit()
             logger.info("Run %s completed successfully", run_id)
+
+
+async def _load_prior_agent_outputs(
+    session: AsyncSession,
+    run_id: str,
+    stages: list[dict],
+    start_index: int,
+) -> list[str]:
+    """Rebuild the agent context chain when resuming (e.g. after a human gate).
+
+    Fresh runs use start_index 0 and return []. On resume, completed agent steps
+    before ``start_index`` already have ``output_summary`` persisted — use that so
+    subsequent agent prompts keep prior step context.
+    """
+    if start_index <= 0:
+        return []
+
+    result = await session.execute(
+        select(WorkflowStep)
+        .where(
+            WorkflowStep.run_id == run_id,
+            WorkflowStep.stage_index < start_index,
+        )
+        .order_by(WorkflowStep.stage_index.asc())
+    )
+    by_index = {s.stage_index: s for s in result.scalars().all()}
+
+    prior: list[str] = []
+    for idx in range(start_index):
+        if idx >= len(stages):
+            break
+        if stages[idx].get("type") != "agent":
+            continue
+        step = by_index.get(idx)
+        if step is None or step.status != "completed" or not step.output_summary:
+            continue
+        prior.append(step.output_summary[:1000])
+
+    return prior
 
 
 def _build_prompt(

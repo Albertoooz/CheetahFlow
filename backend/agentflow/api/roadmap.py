@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentflow.auth import require_admin
 from agentflow.config import get_settings
-from agentflow.db.models import AgentConfig, Project, RoadmapItem, Task, Workspace
+from agentflow.db.agent_lookup import get_enabled_agent_by_role_key
+from agentflow.db.models import Project, RoadmapItem, Task, Workspace
 from agentflow.db.session import get_session
 from agentflow.schemas.roadmap import (
     RoadmapItemCreate,
@@ -127,52 +128,74 @@ async def split_roadmap_item(
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Roadmap item not found")
 
+    previous_status = item.status
     item.status = "splitting"
     await session.commit()
 
-    # Get the task_splitter agent config if it exists, else use defaults
-    settings = get_settings()
-    agent_result = await session.execute(
-        select(AgentConfig).where(AgentConfig.role_key == _SPLITTER_ROLE_KEY, AgentConfig.enabled == True)  # noqa: E712
-    )
-    splitter = agent_result.scalar_one_or_none()
-    model_name = splitter.model_name if splitter else "openai/gpt-4o-mini"
-    instructions = splitter.instructions if splitter else None
+    try:
+        # Get the task_splitter agent config if it exists, else use defaults
+        settings = get_settings()
+        splitter = await get_enabled_agent_by_role_key(session, _SPLITTER_ROLE_KEY)
+        model_name = splitter.model_name if splitter else "openai/gpt-4o-mini"
+        instructions = splitter.instructions if splitter else None
 
-    prompt = _build_split_prompt(item.title, item.description or "")
-    tasks: list[SplitPreviewTask] = []
+        prompt = _build_split_prompt(item.title, item.description or "")
+        tasks: list[SplitPreviewTask] = []
 
-    if settings.openrouter_api_key:
-        tasks = await _split_via_openrouter(
-            prompt=prompt,
-            model_name=model_name,
-            instructions=instructions,
-            api_key=settings.openrouter_api_key,
-        )
-    else:
-        logger.warning("OPENROUTER_API_KEY not set — returning placeholder split tasks")
-        tasks = _placeholder_split(item.title)
-
-    # Persist tasks linked to this roadmap item
-    ws_result = await session.execute(select(Workspace).where(Workspace.slug == _WORKSPACE_SLUG))
-    workspace = ws_result.scalar_one_or_none()
-    if workspace:
-        for t in tasks:
-            task = Task(
-                workspace_id=workspace.id,
-                project_id=project_id,
-                roadmap_item_id=item_id,
-                title=t.title,
-                body=t.body,
-                priority=t.priority,
-                status="backlog",
+        if settings.openrouter_api_key:
+            tasks = await _split_via_openrouter(
+                prompt=prompt,
+                model_name=model_name,
+                instructions=instructions,
+                api_key=settings.openrouter_api_key,
             )
-            session.add(task)
+        else:
+            logger.warning("OPENROUTER_API_KEY not set — returning placeholder split tasks")
+            tasks = _placeholder_split(item.title)
 
-    item.status = "ready"
-    await session.commit()
+        # Persist tasks linked to this roadmap item
+        ws_result = await session.execute(select(Workspace).where(Workspace.slug == _WORKSPACE_SLUG))
+        workspace = ws_result.scalar_one_or_none()
+        if workspace:
+            for t in tasks:
+                task = Task(
+                    workspace_id=workspace.id,
+                    project_id=project_id,
+                    roadmap_item_id=item_id,
+                    title=t.title,
+                    body=t.body,
+                    priority=t.priority,
+                    status="backlog",
+                )
+                session.add(task)
 
-    return SplitPreviewResponse(tasks=tasks)
+        item.status = "ready"
+        await session.commit()
+
+        return SplitPreviewResponse(tasks=tasks)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "Roadmap split failed for project=%s item=%s",
+            project_id,
+            item_id,
+        )
+        await session.rollback()
+        result = await session.execute(
+            select(RoadmapItem).where(
+                RoadmapItem.id == item_id,
+                RoadmapItem.project_id == project_id,
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row is not None:
+            row.status = previous_status
+            await session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Splitting failed. Status was restored; you can try again.",
+        ) from exc
 
 
 def _build_split_prompt(title: str, description: str) -> str:
